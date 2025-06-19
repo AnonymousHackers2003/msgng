@@ -1,33 +1,42 @@
-const fs = require("fs");
-const path = require("path");
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed." };
+  if (event.httpMethod === 'POST') {
+    const { username, message } = JSON.parse(event.body || '{}');
+    if (!username || !message) {
+      return { statusCode: 400, body: 'Bad request' };
+    }
+
+    const { error } = await supabase
+      .from('messages')
+      .insert([{ username, message }]);
+
+    if (error) {
+      return { statusCode: 500, body: JSON.stringify(error) };
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: true, message: 'Message sent' }),
+    };
   }
 
-  const body = JSON.parse(event.body || "{}");
-  const { username, message } = body;
+  if (event.httpMethod === 'GET') {
+    const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: true });
 
-  if (!username || !message) {
-    return { statusCode: 400, body: "Bad request" };
+    if (error) {
+      return { statusCode: 500, body: JSON.stringify(error) };
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(data),
+    };
   }
 
-  const filePath = path.join(__dirname, "../../data/messages.json");
-  const messages = JSON.parse(fs.readFileSync(filePath));
-
-  const newMessage = {
-    id: Date.now(),
-    username,
-    message,
-    time: new Date().toISOString()
-  };
-
-  messages.push(newMessage);
-  fs.writeFileSync(filePath, JSON.stringify(messages, null, 2));
-
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ success: true, message: "Message sent" })
-  };
+  return { statusCode: 405, body: 'Method not allowed' };
 };
